@@ -44,7 +44,7 @@ class ReasoningGUI:
         
         # 创建主窗口
         self.root = ctk.CTk()
-        self.root.title('麦麦推理')
+        self.root.title('爱酱推理')
         self.root.geometry('800x600')
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
         

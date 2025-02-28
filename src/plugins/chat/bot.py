@@ -36,7 +36,7 @@ class ChatBot:
             
     def is_mentioned_bot(self, message: Message) -> bool:
         """检查消息是否提到了机器人"""
-        keywords = ['麦麦']
+        keywords = ['爱酱']
         for keyword in keywords:
             if keyword in message.processed_plain_text:
                 return True
@@ -159,7 +159,7 @@ class ChatBot:
                     raw_message=msg,
                     plain_text=msg,
                     processed_plain_text=msg,
-                    user_nickname="麦麦",
+                    user_nickname="爱酱",
                     group_name=message.group_name,
                     time=timepoint
                 )
@@ -187,7 +187,7 @@ class ChatBot:
                             raw_message=emoji_cq,
                             plain_text=emoji_cq,
                             processed_plain_text=emoji_cq,
-                            user_nickname="麦麦",
+                            user_nickname="爱酱",
                             group_name=message.group_name,
                             time=bot_response_time,
                             is_emoji=True

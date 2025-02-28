@@ -391,7 +391,7 @@ class CQCode:
                 group_id=self.group_id
             )
             if message_obj.user_id == global_config.BOT_QQ:
-                return f"[回复 麦麦 的消息: {message_obj.processed_plain_text}]"
+                return f"[回复 爱酱 的消息: {message_obj.processed_plain_text}]"
             else:
                 return f"[回复 {self.reply_message.sender.nickname} 的消息: {message_obj.processed_plain_text}]"
 
