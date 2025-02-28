@@ -107,21 +107,26 @@ class CQCode:
         from urllib3.util.ssl_ import create_urllib3_context
         from requests.adapters import HTTPAdapter
 
-        # 配置仅允许 TLS1.2
-        tls_ctx = create_urllib3_context()
-        tls_ctx.options |= ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1_3
-        tls_ctx.set_ciphers('ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256')
+        # 创建自定义适配器类 (核心修复)
+        class TLS12Adapter(HTTPAdapter):
+            def init_poolmanager(self, *args, **kwargs):
+                # 强制 TLS1.2 配置
+                context = create_urllib3_context()
+                context.options |= ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1_3
+                context.set_ciphers('ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256')
+                kwargs['ssl_context'] = context
+                return super().init_poolmanager(*args, **kwargs)
 
         # 创建专用会话
         session = requests.Session()
-        session.mount('https://', HTTPAdapter(max_retries=3, ssl_context=tls_ctx))
+        session.mount('https://', TLS12Adapter(max_retries=3))
 
-        # 优化后的请求头 (保持原有格式但修复编码问题)
+        # 修正后的请求头
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.87 Safari/537.36',
-            'Accept': 'text/html, application/xhtml+xml, */*',  # 修正缺失的加号
-            'Accept-Encoding': 'gzip, deflate, br',  # 改用标准编码
-            'Accept-Language': 'zh-CN',  # 修正大小写
+            'Accept': 'text/html, application/xhtml+xml, */*',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Language': 'zh-CN',
             'Cache-Control': 'no-cache'
         }
 
@@ -130,22 +135,19 @@ class CQCode:
             return None
 
         try:
-            # 使用专用会话发送请求
             response = session.get(
                 url,
                 headers=headers,
                 timeout=10,
-                verify=False,  # 保持原有验证设置
+                verify=False,
                 allow_redirects=True
             )
             
-            # 状态码处理逻辑
             if response.status_code == 400 and 'multimedia.nt.qq.com.cn' in url:
-                return None  # 腾讯特殊处理
+                return None
+                
+            response.raise_for_status()
             
-            response.raise_for_status()  # 自动处理非200状态码
-            
-            # 内容类型验证
             if not response.headers.get('content-type', '').startswith('image/'):
                 print(f"\033[1;31m[警告]\033[0m 非图片类型响应: {response.headers.get('content-type')}")
                 return None
