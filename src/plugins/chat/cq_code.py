@@ -4,15 +4,14 @@ import html
 import requests
 import base64
 from PIL import Image
-import io 
-from .image_utils import storage_compress_image, storage_emoji
 import os
 from random import random
 from nonebot.adapters.onebot.v11 import Bot
 from .config import global_config, llm_config
 import time
 import asyncio
-
+from .utils_image import storage_image,storage_emoji
+from .utils_user import get_user_nickname
 #解析各种CQ码
 #包含CQ码类
 
@@ -40,40 +39,6 @@ class CQCode:
     translated_plain_text: Optional[str] = None
     reply_message: Dict = None  # 存储回复消息
     image_base64: Optional[str] = None
-    
-    @classmethod
-    def from_cq_code(cls, cq_code: str, reply: Dict = None) -> 'CQCode':
-        """
-        从CQ码字符串创建CQCode对象
-        例如：[CQ:image,file=1.jpg,url=http://example.com/1.jpg]
-        """
-        if not cq_code.startswith('[CQ:'):
-            return cls('text', {'text': cq_code}, cq_code, group_id=0, user_id=0)
-        
-        # 移除前后的[]
-        content = cq_code[1:-1]
-        # 分离类型和参数部分
-        parts = content.split(',')
-        if not parts:
-            return cls('text', {'text': cq_code}, cq_code, group_id=0, user_id=0)
-            
-        # 获取CQ类型
-        cq_type = parts[0][3:]  # 去掉'CQ:'
-        
-        # 解析参数
-        params = {}
-        for part in parts[1:]:
-            if '=' in part:
-                key, value = part.split('=', 1)
-                # 处理转义字符
-                value = cls.unescape(value)
-                params[key] = value
-        
-        # 创建实例
-        instance = cls(cq_type, params, cq_code, group_id=0, user_id=0, reply_message=reply)
-        # 根据类型进行相应的翻译处理
-        instance.translate()
-        return instance
 
     def translate(self):
         """根据CQ码类型进行相应的翻译处理"""
@@ -85,11 +50,11 @@ class CQCode:
             else:
                 self.translated_plain_text = self.translate_emoji()
         elif self.type == 'at':
-            from .message import Message
-            message_obj = Message(
-                user_id=str(self.params.get('qq', ''))
-            )
-            self.translated_plain_text = f"@{message_obj.user_nickname}"
+            user_nickname = get_user_nickname(self.params.get('qq', ''))
+            if user_nickname:
+                self.translated_plain_text = f"[@{user_nickname}]"
+            else:
+                self.translated_plain_text = f"@某人"
         elif self.type == 'reply':
             self.translated_plain_text = self.translate_reply()
         elif self.type == 'face':
@@ -102,69 +67,97 @@ class CQCode:
             self.translated_plain_text = f"[{self.type}]"
 
     def get_img(self):
-        # 创建自定义 SSL 上下文 (核心修改点),很蛋疼的问题只能TLS1.2请求，1.3报错，Linux高版本就是有问题
+        # TLS 1.2 强制配置区
         import ssl
         from urllib3.util.ssl_ import create_urllib3_context
         from requests.adapters import HTTPAdapter
 
-        # 创建自定义适配器类 (核心修复)
         class TLS12Adapter(HTTPAdapter):
             def init_poolmanager(self, *args, **kwargs):
-                # 强制 TLS1.2 配置
-                context = create_urllib3_context()
-                context.options |= ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1_3
-                context.set_ciphers('ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256')
-                kwargs['ssl_context'] = context
+                # 创建严格 TLS1.2 上下文
+                ctx = create_urllib3_context()
+                ctx.options |= ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1_3
+                ctx.set_ciphers('ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256')  # 腾讯云专用套件
+                
+                # 禁用主机名验证（与verify=False配合）
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                
+                kwargs['ssl_context'] = ctx
                 return super().init_poolmanager(*args, **kwargs)
 
-        # 创建专用会话
+        # 专用会话配置
         session = requests.Session()
         session.mount('https://', TLS12Adapter(max_retries=3))
 
-        # 修正后的请求头
+        # 修正后的请求头（解决400错误）
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.87 Safari/537.36',
-            'Accept': 'text/html, application/xhtml+xml, */*',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Accept-Language': 'zh-CN',
-            'Cache-Control': 'no-cache'
+            'Accept': 'text/html, application/xhtml+xml, */*',  # 修复缺失的加号
+            'Accept-Encoding': 'gzip, deflate, br',  # 使用标准编码
+            'Accept-Language': 'zh-CN,zh;q=0.9',  # 修正语言格式
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
         }
 
         url = html.unescape(self.params['url'])
         if not url.startswith(('http://', 'https://')):
             return None
 
+        max_retries = 3
+        for retry in range(max_retries):
+            try:
+                # 使用自定义会话发送请求
+                response = session.get(
+                    url,
+                    headers=headers,
+                    timeout=10,
+                    allow_redirects=True  # 必须允许重定向
+                )
+                
+                # 状态码处理逻辑
+                if response.status_code == 200:
+                    break
+                elif response.status_code == 400 and 'multimedia.nt.qq.com.cn' in url:
+                    return None  # 腾讯特殊处理
+                    
+                time.sleep(1)
+            except requests.RequestException as e:
+                if retry == max_retries - 1:
+                    print(f"\033[1;31m[致命错误]\033[0m 最终请求失败: {str(e)}")
+                    raise
+                time.sleep(1)
+                
+        # 响应验证
+        if response.status_code != 200:
+            print(f"\033[1;31m[警告]\033[0m 图片下载失败: HTTP {response.status_code}, URL: {url}")
+            return None
+
+        # 类型验证
+        content_type = response.headers.get('content-type', '')
+        if not content_type.startswith('image/'):
+            print(f"\033[1;31m[警告]\033[0m 非图片类型响应: {content_type}")
+            return None
+
+        # Base64编码
         try:
-            response = session.get(
-                url,
-                headers=headers,
-                timeout=10,
-                verify=False,
-                allow_redirects=True
-            )
-            
-            if response.status_code == 400 and 'multimedia.nt.qq.com.cn' in url:
-                return None
-                
-            response.raise_for_status()
-            
-            if not response.headers.get('content-type', '').startswith('image/'):
-                print(f"\033[1;31m[警告]\033[0m 非图片类型响应: {response.headers.get('content-type')}")
-                return None
-                
-            return base64.b64encode(response.content).decode('utf-8')
-            
-        except requests.RequestException as e:
-            print(f"\033[1;31m[错误]\033[0m 请求失败: {str(e)}")
+            image_base64 = base64.b64encode(response.content).decode('utf-8')
+            self.image_base64 = image_base64
+            return image_base64
+        except Exception as e:
+            print(f"\033[1;31m[编码错误]\033[0m {str(e)}")
             return None
     
     def translate_emoji(self) -> str:
         """处理表情包类型的CQ码"""
         if 'url' not in self.params:
             return '[表情包]'
-        base64 = self.get_img()
-        if base64:
-            return self.get_image_description(base64)
+        base64_str = self.get_img()
+        if base64_str:
+            # 将 base64 字符串转换为字节类型
+            image_bytes = base64.b64decode(base64_str)
+            storage_emoji(image_bytes)
+            return self.get_image_description(base64_str)
         else:
             return '[表情包]'
     
@@ -174,9 +167,11 @@ class CQCode:
         #没有url，直接返回默认文本
         if 'url' not in self.params:
             return '[图片]'
-        base64 = self.get_img()
-        if base64:
-            return self.get_image_description(base64)
+        base64_str = self.get_img()
+        if base64_str:
+            image_bytes = base64.b64decode(base64_str)
+            storage_image(image_bytes)
+            return self.get_image_description(base64_str)
         else:
             return '[图片]'
 
