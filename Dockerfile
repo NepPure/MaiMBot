@@ -1,5 +1,10 @@
 FROM nonebot/nb-cli:latest
 WORKDIR /
+# 安装调试工具（curl 和 ping）
+RUN apt-get update && apt-get install -y \
+    curl \
+    iputils-ping 
+
 COPY . /MaiMBot/
 WORKDIR /MaiMBot
 RUN mkdir config
