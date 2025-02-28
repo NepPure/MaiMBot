@@ -102,57 +102,58 @@ class CQCode:
             self.translated_plain_text = f"[{self.type}]"
 
     def get_img(self):
-        '''
-        headers = {
-            'User-Agent': 'QQ/8.9.68.11565 CFNetwork/1220.1 Darwin/20.3.0',
-            'Accept': 'image/*;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-        }
-        '''
-        
+        # 创建自定义 SSL 上下文 (核心修改点),很蛋疼的问题只能TLS1.2请求，1.3报错，Linux高版本就是有问题
+        import ssl
+        from urllib3.util.ssl_ import create_urllib3_context
+        from requests.adapters import HTTPAdapter
+
+        # 配置仅允许 TLS1.2
+        tls_ctx = create_urllib3_context()
+        tls_ctx.options |= ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1_3
+        tls_ctx.set_ciphers('ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256')
+
+        # 创建专用会话
+        session = requests.Session()
+        session.mount('https://', HTTPAdapter(max_retries=3, ssl_context=tls_ctx))
+
+        # 优化后的请求头 (保持原有格式但修复编码问题)
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.87 Safari/537.36',
-            'Accept': 'text/html, application/xhtml xml, */*',
-            'Accept-Encoding': 'gbk, GB2312',
-            'Accept-Language': 'zh-cn',
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'text/html, application/xhtml+xml, */*',  # 修正缺失的加号
+            'Accept-Encoding': 'gzip, deflate, br',  # 改用标准编码
+            'Accept-Language': 'zh-CN',  # 修正大小写
             'Cache-Control': 'no-cache'
         }
+
         url = html.unescape(self.params['url'])
         if not url.startswith(('http://', 'https://')):
-            return None  # 直接返回而不是抛出异常
-        
-        max_retries = 3
-        for retry in range(max_retries):
-            try:
-                response = requests.get(url, headers=headers, timeout=10, verify=False)
-                if response.status_code == 200:
-                    break
-                elif response.status_code == 400 and 'multimedia.nt.qq.com.cn' in url:
-                    # 对于腾讯多媒体服务器的链接，直接返回图片描述
-                    return None
-                time.sleep(1)  # 重试前等待1秒
-            except requests.RequestException:
-                if retry == max_retries - 1:
-                    raise
-                time.sleep(1)
-        if response.status_code != 200:
-            print(f"\033[1;31m[警告]\033[0m 图片下载失败: HTTP {response.status_code}, URL: {url}")
-            return None  # 直接返回而不是抛出异常
-        #检查是否为图片
-        content_type = response.headers.get('content-type', '')
-        if not content_type.startswith('image/'):
-            print(f"\033[1;31m[警告]\033[0m 非图片类型响应: {content_type}")
-            return None  # 直接返回而不是抛出异常  
-        content = response.content
-        image_base64 = base64.b64encode(content).decode('utf-8')
-        if image_base64:
-            self.image_base64 = image_base64
-            return image_base64
-        else:
+            return None
+
+        try:
+            # 使用专用会话发送请求
+            response = session.get(
+                url,
+                headers=headers,
+                timeout=10,
+                verify=False,  # 保持原有验证设置
+                allow_redirects=True
+            )
+            
+            # 状态码处理逻辑
+            if response.status_code == 400 and 'multimedia.nt.qq.com.cn' in url:
+                return None  # 腾讯特殊处理
+            
+            response.raise_for_status()  # 自动处理非200状态码
+            
+            # 内容类型验证
+            if not response.headers.get('content-type', '').startswith('image/'):
+                print(f"\033[1;31m[警告]\033[0m 非图片类型响应: {response.headers.get('content-type')}")
+                return None
+                
+            return base64.b64encode(response.content).decode('utf-8')
+            
+        except requests.RequestException as e:
+            print(f"\033[1;31m[错误]\033[0m 请求失败: {str(e)}")
             return None
     
     def translate_emoji(self) -> str:
