@@ -93,7 +93,7 @@ class CQCode:
         max_retries = 3
         for retry in range(max_retries):
             try:
-                response = requests.get(url, headers=headers, timeout=10, verify=False)
+                response = requests.get(url, headers=headers, timeout=10)
                 if response.status_code == 200:
                     break
                 elif response.status_code == 400 and 'multimedia.nt.qq.com.cn' in url:
