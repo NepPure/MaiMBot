@@ -118,7 +118,7 @@ class CQCode:
                     url,
                     headers=headers,
                     timeout=10,
-                    verify=True  # 保持证书验证
+                    verify=False  # 保持证书验证
                 )
                 
                 # 处理腾讯多媒体服务器特殊情况
