@@ -56,6 +56,7 @@ class CQCode:
 
     def translate(self):
         """根据CQ码类型进行相应的翻译处理"""
+        print(f"\033[1;34m[调试信息]\033[0m 开始翻译CQ{self.params}码: {self.type}")
         if self.type == 'text':
             self.translated_plain_text = self.params.get('text', '')
         elif self.type == 'image':
