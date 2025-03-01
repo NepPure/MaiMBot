@@ -14,41 +14,23 @@ from .utils_image import storage_image,storage_emoji
 from .utils_user import get_user_nickname
 #解析各种CQ码
 #包含CQ码类
-import ssl
 import urllib3
-from requests.adapters import HTTPAdapter
 from urllib3.util import create_urllib3_context
-class TencentSSLAdapter(HTTPAdapter):
-    """专为腾讯多媒体服务器定制的SSL适配器"""
-    def __init__(self):
-        super().__init__()
-        # 创建定制SSL上下文
-        self.ssl_context = create_urllib3_context()
-        
-        # 精准配置加密套件（与服务器完全匹配）
-        self.ssl_context.set_ciphers("AES128-GCM-SHA256")
-        
-        # 强制协议选项
-        self.ssl_context.options |= (
-            ssl.OP_NO_SSLv2 |
-            ssl.OP_NO_SSLv3 |
-            ssl.OP_NO_TLSv1 |
-            ssl.OP_NO_TLSv1_1
-        )
-        
-        # 椭圆曲线配置（与服务器匹配）
-        self.ssl_context.set_ecdh_curve("prime256v1")
 
-    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+
+ctx = create_urllib3_context()
+ctx.load_default_certs()
+ctx.set_ciphers("AES128-GCM-SHA256")
+
+class TencentSSLAdapter(requests.adapters.HTTPAdapter):
+    def __init__(self, ssl_context=None, **kwargs):
+        self.ssl_context = ssl_context
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, connections, maxsize, block=False):
         self.poolmanager = urllib3.poolmanager.PoolManager(
-            num_pools=connections,
-            maxsize=maxsize,
-            block=block,
-            ssl_context=self.ssl_context,
-            server_hostname='multimedia.nt.qq.com.cn',  # 强制SNI
-            **pool_kwargs
-        )
-
+            num_pools=connections, maxsize=maxsize,
+            block=block, ssl_context=self.ssl_context)
 
 @dataclass
 class CQCode:
@@ -123,11 +105,9 @@ class CQCode:
             return None
 
         # 创建专用会话
-        session = requests.Session()
-        
-        # 移除默认适配器
-        session.mount('https://', TencentSSLAdapter())
-        session.mount('http://', TencentSSLAdapter())
+        session = requests.session()
+        session.adapters.pop("https://", None)
+        session.mount("https://", TencentSSLAdapter(ctx))
 
         max_retries = 3
         for retry in range(max_retries):
@@ -136,7 +116,6 @@ class CQCode:
                     url,
                     headers=headers,
                     timeout=15,
-                    verify=False, 
                     allow_redirects=True,
                     stream=True  # 流式传输避免大内存问题
                 )
@@ -168,6 +147,7 @@ class CQCode:
                 return None
 
         return None
+    
     def translate_emoji(self) -> str:
         """处理表情包类型的CQ码"""
         if 'url' not in self.params:
