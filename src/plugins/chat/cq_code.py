@@ -14,9 +14,24 @@ from .utils_image import storage_image,storage_emoji
 from .utils_user import get_user_nickname
 #解析各种CQ码
 #包含CQ码类
+import ssl
+from requests.adapters import HTTPAdapter
+from urllib3.poolmanager import PoolManager
 
-
-
+# 自定义适配器强制TLS 1.2
+class TLS12Adapter(HTTPAdapter):
+    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+        # 创建仅支持TLS 1.2的SSL上下文
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        # 设置兼容性加密套件（根据腾讯服务器实际情况调整）
+        ctx.set_ciphers('ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256')
+        self.poolmanager = PoolManager(
+            num_pools=connections,
+            maxsize=maxsize,
+            block=block,
+            ssl_context=ctx,
+            **pool_kwargs
+        )
 
 @dataclass
 class CQCode:
@@ -88,39 +103,60 @@ class CQCode:
         }
         url = html.unescape(self.params['url'])
         if not url.startswith(('http://', 'https://')):
-            return None  # 直接返回而不是抛出异常
+            return None
+        
+        # 创建自定义会话
+        session = requests.Session()
+        session.mount('https://', TLS12Adapter())
         
         max_retries = 3
+        response = None
+        
         for retry in range(max_retries):
             try:
-                response = requests.get(url, headers=headers, timeout=10)
+                response = session.get(
+                    url,
+                    headers=headers,
+                    timeout=10,
+                    verify=True  # 保持证书验证
+                )
+                
+                # 处理腾讯多媒体服务器特殊情况
+                if response.status_code == 400 and 'multimedia.nt.qq.com.cn' in url:
+                    return None
+                    
                 if response.status_code == 200:
                     break
-                elif response.status_code == 400 and 'multimedia.nt.qq.com.cn' in url:
-                    # 对于腾讯多媒体服务器的链接，直接返回图片描述
+                    
+            except requests.exceptions.SSLError as e:
+                if 'handshake failure' in str(e) and retry == max_retries - 1:
+                    print(f"\033[1;31m[SSL错误]\033[0m 无法建立安全连接: {str(e)}")
                     return None
-                time.sleep(1)  # 重试前等待1秒
-            except requests.RequestException:
-                if retry == max_retries - 1:
-                    raise
                 time.sleep(1)
-        if response.status_code != 200:
-            print(f"\033[1;31m[警告]\033[0m 图片下载失败: HTTP {response.status_code}, URL: {url}")
-            return None  # 直接返回而不是抛出异常
-        #检查是否为图片
-        content_type = response.headers.get('content-type', '')
-        if not content_type.startswith('image/'):
-            print(f"\033[1;31m[警告]\033[0m 非图片类型响应: {content_type}")
-            return None  # 直接返回而不是抛出异常  
-        content = response.content
-        image_base64 = base64.b64encode(content).decode('utf-8')
-        if image_base64:
-            self.image_base64 = image_base64
-            
-            return image_base64
-        else:
+            except requests.RequestException as e:
+                if retry == max_retries - 1:
+                    print(f"\033[1;31m[请求失败]\033[0m {str(e)}")
+                    return None
+                time.sleep(1)
+
+        if not response or response.status_code != 200:
+            print(f"\033[1;31m[警告]\033[0m 图片下载失败: HTTP {response.status_code if response else '无响应'}, URL: {url}")
             return None
-    
+
+        # 验证内容类型
+        content_type = response.headers.get('Content-Type', '')
+        if not content_type.startswith('image/'):
+            print(f"\033[1;33m[可疑内容]\033[0m 非图片类型响应: {content_type}")
+            return None
+
+        try:
+            image_base64 = base64.b64encode(response.content).decode('utf-8')
+            self.image_base64 = image_base64
+            return image_base64
+        except Exception as e:
+            print(f"\033[1;31m[编码错误]\033[0m Base64编码失败: {str(e)}")
+            return None
+        
     def translate_emoji(self) -> str:
         """处理表情包类型的CQ码"""
         if 'url' not in self.params:
@@ -133,8 +169,8 @@ class CQCode:
             return self.get_image_description(base64_str)
         else:
             return '[表情包]'
-    
-    
+        
+        
     def translate_image(self) -> str:
         """处理图片类型的CQ码，区分普通图片和表情包"""
         #没有url，直接返回默认文本
@@ -339,9 +375,9 @@ class CQCode:
     def unescape(text: str) -> str:
         """反转义CQ码中的特殊字符"""
         return text.replace('&#44;', ',') \
-                  .replace('&#91;', '[') \
-                  .replace('&#93;', ']') \
-                  .replace('&amp;', '&')
+                .replace('&#91;', '[') \
+                .replace('&#93;', ']') \
+                .replace('&amp;', '&')
 
     @staticmethod
     def create_emoji_cq(file_path: str) -> str:
@@ -356,9 +392,9 @@ class CQCode:
         abs_path = os.path.abspath(file_path)
         # 转义特殊字符
         escaped_path = abs_path.replace('&', '&amp;') \
-                             .replace('[', '&#91;') \
-                             .replace(']', '&#93;') \
-                             .replace(',', '&#44;')
+                            .replace('[', '&#91;') \
+                            .replace(']', '&#93;') \
+                            .replace(',', '&#44;')
         # 生成CQ码，设置sub_type=1表示这是表情包
         return f"[CQ:image,file=file:///{escaped_path},sub_type=1]"
     
