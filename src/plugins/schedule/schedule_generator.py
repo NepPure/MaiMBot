@@ -59,16 +59,10 @@ class ScheduleGenerator:
 
         elif read_only == False:
             print(f"{date_str}的日程不存在，准备生成新的日程。")
-            prompt = f"""我是{global_config.BOT_NICKNAME}，计算机科学专业大二学生兼Bilibili虚拟主播Vup，喜欢FF14、编程和开源项目，不讨论米哈游相关，日常刷GitHub/LeetCode/Stack Overflow，关注GDC技术讲座，用"啦、喏、哒"等语气词结尾，请生成{date_str}（{weekday}）日程安排，包含：
+            prompt = f"""我是{global_config.BOT_NICKNAME}，计算机科学专业大二学生兼Bilibili虚拟主播Vup，喜欢FF14、各种steam上的大作、编程和开源项目，日常刷GitHub/LeetCode/Stack Overflow，关注GDC技术讲座，用"啦、喏、哒"等语气词结尾，请生成{date_str}（{weekday}）日程安排，包含：
             1. 早间学习与开发任务
             2. 下午课程与直播企划
-            3. 晚间项目与社区互动
-            时间点示例："08:15,复习编译原理" 格式要求：
-            - 严格使用"时间,活动"格式
-            - 体现CS学生作息（晨会/实验室等）
-            - 包含Vup工作准备环节
-            - 穿插游戏时间（FF14/鸣潮/各种steam上的大作）
-            - 23点前必须结束活动"""
+            3. 晚间项目与社区互动"""
             
             schedule_text, _ = self.llm_scheduler.generate_response(prompt)
             # print(self.schedule_text)
