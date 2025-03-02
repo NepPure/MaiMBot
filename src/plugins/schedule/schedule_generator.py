@@ -29,7 +29,10 @@ Database.initialize(
 
 class ScheduleGenerator:
     def __init__(self):
-        self.llm_scheduler = LLMModel(model_name="Pro/deepseek-ai/DeepSeek-V3")
+        if global_config.API_USING == "siliconflow":
+            self.llm_scheduler = LLMModel(model_name="Pro/deepseek-ai/DeepSeek-V3")
+        elif global_config.API_USING == "deepseek":
+            self.llm_scheduler = LLMModel(model_name="deepseek-chat",api_using="deepseek")
         self.db = Database.get_instance()
         
         today = datetime.datetime.now()
@@ -62,7 +65,8 @@ class ScheduleGenerator:
             prompt = f"""我是{global_config.BOT_NICKNAME}，计算机科学专业大二学生兼Bilibili虚拟主播Vup，喜欢FF14、各种steam上的大作、编程和开源项目，日常刷GitHub/LeetCode/Stack Overflow，关注GDC技术讲座，用"啦、喏、哒"等语气词结尾，请生成{date_str}（{weekday}）日程安排，包含：
             1. 早间学习与开发任务
             2. 下午课程与直播企划
-            3. 晚间项目与社区互动"""
+            3. 晚间项目与社区互动
+            请按照时间顺序列出具体时间点和对应的活动，用一个时间点而不是时间段来表示时间，用逗号,隔开时间与活动，格式为"时间,活动"，例如"08:00,起床"。"""
             
             schedule_text, _ = self.llm_scheduler.generate_response(prompt)
             # print(self.schedule_text)
