@@ -3,8 +3,8 @@ mongodb/
 NapCat.Framework.Windows.Once/
 log/
 src/plugins/memory
-config/bot_config.toml
 /test
+config/bot_config.toml
 message_queue_content.txt
 message_queue_content.bat
 message_queue_window.bat
@@ -14,7 +14,7 @@ reasoning_content.bat
 reasoning_window.bat
 queue_update.txt
 memory_graph.gml
-.env.dev
+.env.*
 
 
 # Byte-compiled / optimized / DLL files
@@ -147,7 +147,6 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
 .venv
 env/
 venv/
