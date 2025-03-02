@@ -28,7 +28,7 @@
 > ⚠️ **警告**：请自行了解qqbot的风险，麦麦有时候一天被腾讯肘七八次
 > ⚠️ **警告**：由于麦麦一直在迭代，所以可能存在一些bug，请自行测试，包括胡言乱语（
 
-关于麦麦的开发和建议相关的讨论群（不建议发布无关消息）这里不会有麦麦发言！
+关于麦麦的开发和建议相关的讨论群:766798517（不建议发布无关消息）这里不会有麦麦发言！
 
 ## 开发计划TODO：LIST
 
@@ -41,16 +41,13 @@
 - config自动生成和检测
 - log别用print
 - 给发送消息写专门的类
+- 改进表情包发送逻辑l
 
-
-<div align="center">
-<img src="docs/qq.png" width="300" />
-</div>
 
 ## 📚 详细文档
 - [项目详细介绍和架构说明](docs/doc1.md) - 包含完整的项目结构、文件说明和核心功能实现细节(由claude-3.5-sonnet生成)
 
-### 安装方法（还没测试好，现在部署可能遇到未知问题！！！！）
+### 安装方法（还没测试好，随时outdated ,现在部署可能遇到未知问题！！！！）
 
 #### Linux 使用 Docker Compose 部署
 获取项目根目录中的```docker-compose.yml```文件，运行以下命令
@@ -78,8 +75,9 @@ NAPCAT_UID=$(id -u) NAPCAT_GID=$(id -g) docker compose restart
    - 在Napcat的网络设置中添加ws反向代理:ws://localhost:8080/onebot/v11/ws
 
 4. **配置文件设置**
-   - 将.env文件打开，填上你的apikey（硅基流动或deepseekapi）
-   - 将bot_config.toml文件打开，并填写相关内容，不然无法正常运行
+   - 修改.env的 变量值为 prod
+   - 将.env.prod文件打开，填上你的apikey（硅基流动或deepseekapi）
+   - 将bot_config_toml改名为bot_config.toml，打开并填写相关内容，不然无法正常运行
 
    #### .env 文件配置说明
    ```ini
